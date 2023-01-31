@@ -3,6 +3,7 @@ import io
 import logging
 import os
 import re
+import shutil
 
 import numpy as np
 import pandas as pd
@@ -30,6 +31,7 @@ def main(args):
         if re.search("\.(mp3|wav|m4a)$", file, re.IGNORECASE)
     ]
     examples = []
+    iteration = 0
     try:
         for audio_file in tqdm(audio_files):
             try:
@@ -57,12 +59,36 @@ def main(args):
                         }
                     ]
                 )
+
+            iteration += 1
+            if iteration % args.save_interval == 0:
+                if len(examples) == 0:
+                    continue
+
+                shutil.rmtree(os.path.join(args.output_dir))
+
+                ds = Dataset.from_pandas(
+                    pd.DataFrame(examples),
+                    features=Features(
+                        {
+                            "image": Image(),
+                            "audio_file": Value(dtype="string"),
+                            "slice": Value(dtype="int16"),
+                        }
+                    ),
+                )
+                dsd = DatasetDict({"train": ds})
+                dsd.save_to_disk(os.path.join(args.output_dir))
+
     except Exception as e:
         print(e)
     finally:
         if len(examples) == 0:
             logger.warn("No valid audio files were found.")
             return
+
+        shutil.rmtree(os.path.join(args.output_dir))
+
         ds = Dataset.from_pandas(
             pd.DataFrame(examples),
             features=Features(
@@ -93,6 +119,7 @@ if __name__ == "__main__":
     parser.add_argument("--push_to_hub", type=str, default=None)
     parser.add_argument("--sample_rate", type=int, default=22050)
     parser.add_argument("--n_fft", type=int, default=2048)
+    parser.add_argument("--save_interval", type=int, default=1000)
     args = parser.parse_args()
 
     if args.input_dir is None:
